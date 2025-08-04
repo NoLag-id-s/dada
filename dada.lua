@@ -51,7 +51,7 @@ if getServerType and getServerType:IsA("RemoteFunction") then
         if targetServer then
             TeleportService:TeleportToPlaceInstance(game.PlaceId, targetServer, player)
         else
-            player:Kick("No public servers with 3 players found. Try again.")
+            player:Kick("automatic kick don't join private server")
         end
         return
     end
